@@ -32,13 +32,12 @@ class DN_Remp_Cabrio {
 	private $plugin = 'dn_remp_cabrio';
 
 	function __construct() {
-		add_action( 'wp_head', [ $this, 'wp_head' ], 1 );
+		add_action( 'wp_footer', [ $this, 'wp_footer' ], 1 );
 		add_action( 'save_post', [ $this, 'save_post' ] );
 		add_action( 'admin_menu', [ $this, 'admin_menu' ] );
 		add_action( 'admin_init', [ $this, 'admin_init' ] );
 		add_action( 'plugins_loaded', [ $this, 'plugins_loaded' ] );
-
-		add_action( 'template_redirect', [ $this, 'init_cabrio_lock' ] );
+		add_action( 'wp_enqueue_scripts', [ $this, 'wp_enqueue_scripts' ] );
 
 		if ( !empty( get_option( 'dn_remp_cabrio_title_on' ) ) ) {
 			add_action( 'edit_form_before_permalink', [ $this, 'edit_form_before_permalink' ] );
@@ -51,10 +50,9 @@ class DN_Remp_Cabrio {
 		}
 	}
 
-	function init_cabrio_lock() {
-		if ( !empty( get_option( 'dn_remp_cabrio_lock_on' ) ) && intval( get_option( 'dn_remp_cabrio_lock_delta' ) ) && is_single() ) {
-			add_action( 'wp_footer', [ $this, 'wp_footer' ], 1 );
-		}
+	function wp_enqueue_scripts() {
+		wp_register_script( 'dn_remp_cabrio_script', plugin_dir_url( __FILE__ ) . 'dn-remp-cabrio.js', null );
+		wp_enqueue_script( 'dn_remp_cabrio_script' );
 	}
 
 	function admin_menu() {
@@ -187,6 +185,12 @@ class DN_Remp_Cabrio {
 						'description' => __( 'All top-level children inside element selected by <strong>Article selector</strong> are counted as paragraphs.<br/> Plugin will hide configured number of full paragraphs and will trim any content within the paragraph of paywall gate printed before the gate.', 'remp' ),
 						'key' => 'dn_remp_cabrio_lock_delta',
 						'type' => 'number'
+					],
+					[
+						'label' => __( 'Minimal number of paragraphs to keep visible', 'remp' ),
+						'description' => __( 'Keep this number of paragraphs visible if the article is too short for A/B testing.', 'remp' ),
+						'key' => 'dn_remp_cabrio_lock_min',
+						'type' => 'number'
 					]
 				]
 			]
@@ -207,7 +211,7 @@ class DN_Remp_Cabrio {
 
 	function deactivate_notice() {
 		printf( '<div class="error"><p>%s</p></div>',
-			__( 'The plugin <strong>DN REMP Cabrio</strong> requires <a href="https://wordpress.org/plugins/multiple-post-thumbnails/"><strong>Multiple Post Thumbnails</strong></a> plugin to work correctly. Please install it.' )
+			__( 'The plugin <strong>DN REMP Cabrio</strong> requires <a href="https://wordpress.org/plugins/multiple-post-thumbnails/" target="_blank"><strong>Multiple Post Thumbnails</strong></a> plugin to work correctly. Please install it.' )
 		);
 	}
 
@@ -229,13 +233,13 @@ class DN_Remp_Cabrio {
 		$thumbnail2 = '';
 
 		if ( class_exists( 'MultiPostThumbnails' ) && ( $thumbnail2 = MultiPostThumbnails::get_post_thumbnail_id( get_post_type(), '_' . $this->plugin . '_thumbnail2', $post_id ) ) ) {
-			$thumbnail2 = wp_get_attachment_image_src( $thumbnail2, '$size' )[0];
+			$html2 = wp_get_attachment_image( $thumbnail2, $size );
 		}
 
 		$html = str_replace( '<img ', sprintf( '<img data-cabrioi="%s" ', $post_id ), $html );
 		$html .= sprintf( '<script>cabrioSI(%1$s,"%2$s");</script>',
 			$post_id,
-			esc_js( esc_html( $thumbnail2 ) )
+			str_replace( '"', "'", $html2 )
 		);
 
 		return $html;
@@ -296,185 +300,17 @@ class DN_Remp_Cabrio {
 	}
 
 	function wp_footer() {
-		$delta = get_option( 'dn_remp_cabrio_lock_delta' );
-		$article = esc_js( esc_html( get_option( 'dn_remp_cabrio_lock_article' ) ) );
-		$gate = esc_js( esc_html( get_option( 'dn_remp_cabrio_lock_gate' ) ) );
+		if ( empty( get_option( 'dn_remp_cabrio_lock_on' ) ) || !intval( get_option( 'dn_remp_cabrio_lock_delta' ) ) || !is_single() ) {
+			return;
+		}
 
-		?>
-		<!-- REMP Cabrio / Lock position -->
-		<script type="application/javascript">
-			// closest() polyfill
-			if (window.Element && !Element.prototype.closest) {
-				Element.prototype.closest =
-					function(s) {
-						var matches = (this.document || this.ownerDocument).querySelectorAll(s),
-							i,
-							el = this;
-						do {
-							i = matches.length;
-							while (--i >= 0 && matches.item(i) !== el) {};
-						} while ((i < 0) && (el = el.parentElement));
-						return el;
-					};
-			}
-			// remove polyfill
-			if (window.Element && !Element.prototype.remove) {
-				Element.prototype.remove =
-					function() {
-						if (this.parentNode) {
-							this.parentNode.removeChild(this);
-						}
-					};
-			}
-			window.cabrioSL(<?= sprintf("%s, '%s', '%s', %d", get_the_ID(), $article, $gate, $delta) ?>);
-		</script>
-		<!-- REMP Cabrio / Lock position -->
-		<?php
-	}
-
-	function wp_head() {
-		?>
-		<script>
-			(function(d, n, w, p, r) {
-				w.cabrioWC = function(n, v, d) {
-					var e, t = new Date();
-
-					if (d) {
-						t.setTime(t.getTime() + d * 86400000);
-						e = '; expires=' + t.toGMTString();
-					} else {
-						e = '';
-					}
-
-					document.cookie = n + '=' + v + e + '; path=/';
-				};
-
-				w.cabrioRC = function(n) {
-					n = n + '=';
-					var a = document.cookie.split(';');
-
-					for (var i = 0; i < a.length; i++) {
-						var c = a[i];
-						while (c.charAt(0) === ' ') {
-							c = c.substring(1, c.length);
-						}
-
-						if (c.indexOf(n) === 0) {
-							return c.substring(n.length, c.length);
-						}
-					}
-
-					return null;
-				};
-
-				w.cabrioSI = function(postId, alternativeImageUrl) {
-					w[p]['i']['variants'][postId] = (alternativeImageUrl && w[p]['i']['selected'] === 'B') ? 'B' : 'A';
-
-					if (w[p]['i']['selected'] === 'A') {
-						return;
-					}
-
-					var d = 'data-' + p + 'i',
-						e = document.querySelector('[' + d + '="' + postId + '"]');
-
-					if (e && alternativeImageUrl) {
-						e.src = alternativeImageUrl;
-						e.removeAttribute(d);
-						e.removeAttribute("srcset");
-					}
-				};
-
-				w.cabrioST = function(postId, alternativeTitle) {
-					w[p]['t']['variants'][postId] = (alternativeTitle && w[p]['t']['selected'] === 'B') ? 'B' : 'A';
-
-					if (w[p]['t']['selected'] === 'A') {
-						return;
-					}
-
-					var d = 'data-' + p + 't',
-						e = document.querySelector('[' + d + '="' + postId + '"]');
-
-					if (e && alternativeTitle) {
-						e.innerHTML = alternativeTitle;
-						e.removeAttribute(d);
-					}
-				};
-
-				w.cabrioSL = function(postId, articleSelector, gateSelector, delta) {
-					w[p]['l']['variants'][postId] = (w[p]['l']['selected'] === 'B') ? 'B' : 'A';
-					if (w[p]['l']['selected'] === 'A') {
-						return;
-					}
-
-					// initialize DOM elements
-					var article = document.querySelector(articleSelector);
-					if (!article) {
-						return;
-					}
-					var paywallGate = document.querySelector(gateSelector);
-					if (!paywallGate) {
-						return;
-					}
-					if (delta < 1) {
-						return;
-					}
-
-					// find paywall gate's paragraph
-					var paywallNodeIndex = null;
-					var paywallGatePosition = null;
-
-					for (var i=0; i<article.children.length; i++) {
-						var idx = article.children[i].innerHTML.indexOf(paywallGate.innerHTML);
-						if (idx !== -1) {
-							paywallNodeIndex = i;
-							paywallGatePosition = idx;
-							break;
-						}
-					}
-
-					if (!paywallNodeIndex || !paywallGatePosition) {
-						return;
-					}
-
-					// remove the content within the paywall's paragraph
-					article.children[paywallNodeIndex].innerHTML = article.children[paywallNodeIndex].innerHTML.substring(paywallGatePosition);
-
-					// remove the paragraphs preceding paragraph with paywall gate
-					for (i = 1; i <= delta; i++ ) {
-						article.children[paywallNodeIndex-i].remove();
-						if (paywallNodeIndex-i === 1) {
-							// keep at least one paragraph of content
-							break;
-						}
-					}
-				};
-
-				var a = ['i', 't', 'l'];
-
-				if (!w[p]) {
-					w[p] = {};
-				}
-
-				for (var i = 0; i < a.length; i++) {
-					var b = a[i];
-					var v = cabrioRC(p + b);
-
-					if (!v) {
-						v = Math.random() > r ? 'A' : 'B';
-						cabrioWC(p + b, v, 365);
-					}
-
-					if (!w[p][b]) {
-						w[p][b] = {
-							'default': 'A',
-							'selected': v,
-							'variants': {}
-						};
-					}
-				}
-			}(document, 't', window, 'cabrio', 0.5)); //dnwp
-		</script>
-		<?php
+		printf( '<script type="text/javascript">window.cabrioSL(%s,"%s","%s",%d,%d);</script>',
+			get_the_ID(),
+			esc_js( esc_html( get_option( 'dn_remp_cabrio_lock_article' ) ) ),
+			esc_js( esc_html( get_option( 'dn_remp_cabrio_lock_gate' ) ) ),
+			get_option( 'dn_remp_cabrio_lock_delta' ),
+			get_option( 'dn_remp_cabrio_lock_min' )
+		);
 	}
 }
 
