@@ -13,21 +13,6 @@ if ( !defined( 'WPINC' ) ) {
 	die;
 }
 
-if ( !function_exists('dn_user_has_tag')) {
-	/**
-	 * dn_user_has_tag checks, whether user should be able to use the A/B test or not.
-	 * By default it's enabled for everyone, but by implementing the function within
-	 * your Wordpress instance you can override the setting and limit the functionallity
-	 * only to the selected set of editors.
-	 *
-	 * @param string $tag
-	 * @return bool
-	 */
-	function dn_user_has_tag( $tag ) {
-		return true;
-	}
-}
-
 class DN_Remp_Cabrio {
 	private $plugin = 'dn_remp_cabrio';
 
@@ -252,10 +237,9 @@ class DN_Remp_Cabrio {
 
 		$title2 = get_post_meta( $post->ID, '_' . $this->plugin . '_title2', true );
 
-		printf( '<input id="%1$s" name="%1$s" style="width:100%%;margin:0;" value="%2$s" type="%3$s" placeholder="%4$s" spellcheck="true" autocomplete="off">',
+		printf( '<input id="%1$s" name="%1$s" style="width:100%%;margin:0;" value="%2$s" type="text" placeholder="%3$s" spellcheck="true" autocomplete="off">',
 			'_' . $this->plugin . '_title2',
 			empty( $title2 ) ? '' : esc_attr( esc_html( $title2 ) ),
-			dn_user_has_tag( 'ab' ) ? 'text' : 'hidden',
 			__( 'Alternative Title', 'remp' )
 		);
 	}
